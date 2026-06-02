@@ -73,7 +73,7 @@ def _get_gemini_embedding(text: str, api_key: str) -> list[float]:
 # ──────────────────────────────────────────────
 # ChromaDB Helper
 # ──────────────────────────────────────────────
-def _get_collection(context: AssistantContext):
+def _get_collection(context: AssistantContext | None = None):
     """Retrieve or initialize the ChromaDB memory collection."""
     chromadb = _optional_module("chromadb")
     if not chromadb:
