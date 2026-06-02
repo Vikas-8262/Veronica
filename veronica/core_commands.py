@@ -104,14 +104,41 @@ def is_core_command(command: str) -> bool:
 
 
 def open_app(command: str) -> str:
-    """Open a known local app from the safe app allow-list."""
+    """Open a known local app or attempt to launch it dynamically on the system."""
+    # 1. Try static APP_MAP matching first
     for label, executable in APP_MAP.items():
         if label in command:
             try:
-                subprocess.Popen([executable])
+                subprocess.Popen([executable], shell=(platform.system() == "Windows"))
                 return f"{label.title()} khol diya!"
             except OSError:
                 return f"{label} nahi mila."
+
+    # 2. Dynamic Fallback: extract app name candidate after open words
+    normalized = _normalize(command)
+    candidate = ""
+    for word in OPEN_WORDS:
+        if word in normalized:
+            parts = normalized.split(word, 1)
+            if len(parts) > 1:
+                candidate = parts[1].strip()
+                break
+
+    if candidate:
+        try:
+            if platform.system() == "Windows":
+                try:
+                    os.startfile(candidate)
+                    return f"{candidate.title()} khol diya!"
+                except Exception:
+                    subprocess.Popen([candidate], shell=True)
+                    return f"{candidate.title()} khol diya!"
+            else:
+                subprocess.Popen([candidate])
+                return f"{candidate.title()} khol diya!"
+        except Exception:
+            pass
+
     return "Yeh app nahi pehchana."
 
 
