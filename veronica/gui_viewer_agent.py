@@ -20,6 +20,27 @@ def is_gui_viewer_request(message: str) -> bool:
 # Tkinter Window Engine
 # ──────────────────────────────────────────────
 def _build_gui():
+    import os
+    if not os.getenv("VERONICA_GUI_SUBPROCESS"):
+        import subprocess
+        import sys
+        from pathlib import Path
+        
+        env = os.environ.copy()
+        env["VERONICA_GUI_SUBPROCESS"] = "1"
+        code = (
+            "import sys\n"
+            "from pathlib import Path\n"
+            f"sys.path.insert(0, r'{Path.cwd()}')\n"
+            "from veronica.gui_viewer_agent import _build_gui\n"
+            "_build_gui()\n"
+        )
+        try:
+            subprocess.Popen([sys.executable, "-c", code], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        except Exception:
+            pass
+
     try:
         import tkinter as tk
         from tkinter import ttk, messagebox

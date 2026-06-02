@@ -22,6 +22,27 @@ PLACEHOLDER = "Boliye Veronica se..."
 
 def show_greeting_popup(message: str | None = None, assistant_name: str = "Veronica") -> str:
     """Show a bottom-right JARVIS-style greeting popup."""
+    import os
+    if not os.getenv("VERONICA_GUI_SUBPROCESS"):
+        import subprocess
+        import sys
+        from pathlib import Path
+        
+        env = os.environ.copy()
+        env["VERONICA_GUI_SUBPROCESS"] = "1"
+        code = (
+            "import sys\n"
+            "from pathlib import Path\n"
+            f"sys.path.insert(0, r'{Path.cwd()}')\n"
+            "from veronica.gui import show_greeting_popup\n"
+            f"show_greeting_popup({repr(message)}, {repr(assistant_name)})\n"
+        )
+        try:
+            subprocess.Popen([sys.executable, "-c", code], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return "GUI popup spawned in subprocess."
+        except Exception as e:
+            return f"Failed to spawn subprocess: {e}"
+
     tkinter = _optional_module("tkinter")
     if tkinter is None:
         return "GUI ke liye tkinter install/enable karo."
