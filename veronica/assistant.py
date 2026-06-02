@@ -111,7 +111,7 @@ class Assistant:
 
         # Check Safety Policy Engine
         from .policy_agent import check_command_safety
-        is_safe, warn_msg = check_command_safety(cleaned)
+        is_safe, warn_msg = check_command_safety(cleaned, self.config.data_dir)
         if not is_safe:
             return warn_msg
         elif warn_msg:

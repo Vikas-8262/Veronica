@@ -10,13 +10,14 @@ import datetime
 from pathlib import Path
 from .skills import AssistantContext, SkillResult
 
-def _get_calendar_path() -> Path:
-    data_dir = Path(os.path.expanduser("~")) / ".veronica"
+def _get_calendar_path(data_dir: Path | None = None) -> Path:
+    if data_dir is None:
+        data_dir = Path(os.path.expanduser("~")) / ".veronica"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir / "calendar.json"
 
-def _load_calendar() -> list:
-    path = _get_calendar_path()
+def _load_calendar(data_dir: Path | None = None) -> list:
+    path = _get_calendar_path(data_dir)
     if path.exists():
         try:
             return json.loads(path.read_text(encoding="utf-8"))
@@ -24,8 +25,8 @@ def _load_calendar() -> list:
             pass
     return []
 
-def _save_calendar(calendar: list):
-    path = _get_calendar_path()
+def _save_calendar(calendar: list, data_dir: Path | None = None):
+    path = _get_calendar_path(data_dir)
     try:
         path.write_text(json.dumps(calendar, indent=2), encoding="utf-8")
     except Exception:
@@ -48,7 +49,7 @@ def is_calendar_request(message: str) -> bool:
 # ──────────────────────────────────────────────
 def handle_calendar_request(message: str, context: AssistantContext) -> SkillResult:
     lowered = message.lower().strip()
-    calendar = _load_calendar()
+    calendar = _load_calendar(context.data_dir)
     
     # 1. Schedule event: schedule/add event <description> on <YYYY-MM-DD> at <HH:MM>
     if lowered.startswith("schedule event ") or lowered.startswith("add event "):
@@ -79,7 +80,7 @@ def handle_calendar_request(message: str, context: AssistantContext) -> SkillRes
         })
         # Sort calendar chronologically
         calendar.sort(key=lambda x: f"{x['date']} {x['time']}")
-        _save_calendar(calendar)
+        _save_calendar(calendar, context.data_dir)
         
         return SkillResult(
             True, 
@@ -91,7 +92,7 @@ def handle_calendar_request(message: str, context: AssistantContext) -> SkillRes
         
     # 2. Clear calendar / schedule
     if lowered in ("clear calendar", "clear schedule"):
-        _save_calendar([])
+        _save_calendar([], context.data_dir)
         return SkillResult(True, "🧹 Calendar cleared successfully. All events deleted.")
         
     # 3. Today's Agenda

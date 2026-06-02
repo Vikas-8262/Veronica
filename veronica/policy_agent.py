@@ -9,13 +9,14 @@ import re
 from pathlib import Path
 from .skills import AssistantContext, SkillResult
 
-def _get_policy_file() -> Path:
-    data_dir = Path(os.path.expanduser("~")) / ".veronica"
+def _get_policy_file(data_dir: Path | None = None) -> Path:
+    if data_dir is None:
+        data_dir = Path(os.path.expanduser("~")) / ".veronica"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir / "policy_config.json"
 
-def _load_policy() -> dict:
-    path = _get_policy_file()
+def _load_policy(data_dir: Path | None = None) -> dict:
+    path = _get_policy_file(data_dir)
     if path.exists():
         try:
             return json.loads(path.read_text(encoding="utf-8"))
@@ -26,8 +27,8 @@ def _load_policy() -> dict:
         "blocked_count": 0
     }
 
-def _save_policy(config: dict):
-    path = _get_policy_file()
+def _save_policy(config: dict, data_dir: Path | None = None):
+    path = _get_policy_file(data_dir)
     try:
         path.write_text(json.dumps(config, indent=2), encoding="utf-8")
     except Exception:
@@ -46,12 +47,12 @@ def is_policy_request(message: str) -> bool:
 # ──────────────────────────────────────────────
 # Risk Interceptor
 # ──────────────────────────────────────────────
-def check_command_safety(message: str) -> tuple[bool, str | None]:
+def check_command_safety(message: str, data_dir: Path | None = None) -> tuple[bool, str | None]:
     """Inspects a query to verify if it complies with the current safety level.
     
     Returns (is_safe, error_message).
     """
-    config = _load_policy()
+    config = _load_policy(data_dir)
     level = config["safety_level"]
     
     if level == "low":
@@ -76,7 +77,7 @@ def check_command_safety(message: str) -> tuple[bool, str | None]:
             # High risk pattern detected
             if level == "high":
                 config["blocked_count"] += 1
-                _save_policy(config)
+                _save_policy(config, data_dir)
                 return False, f"🚨 Command blocked by safety policy (Level: HIGH). High-risk pattern detected."
             elif level == "medium":
                 return True, f"⚠️ Warning: This command contains high-risk actions. Proceeding under safety level MEDIUM."
@@ -84,7 +85,7 @@ def check_command_safety(message: str) -> tuple[bool, str | None]:
     # Intercept sandbox or Docker instructions under HIGH safety
     if level == "high" and any(trigger in lowered for trigger in ("run in sandbox", "run sandbox", "execute sandbox")):
         config["blocked_count"] += 1
-        _save_policy(config)
+        _save_policy(config, data_dir)
         return False, "🚨 Sandbox execution is restricted under safety level: HIGH."
         
     return True, None
@@ -94,7 +95,7 @@ def check_command_safety(message: str) -> tuple[bool, str | None]:
 # ──────────────────────────────────────────────
 def handle_policy_request(message: str, context: AssistantContext) -> SkillResult:
     lowered = message.lower().strip()
-    config = _load_policy()
+    config = _load_policy(context.data_dir)
     
     if lowered.startswith("set safety level "):
         level = message[len("set safety level "):].strip().lower()
@@ -102,7 +103,7 @@ def handle_policy_request(message: str, context: AssistantContext) -> SkillResul
             return SkillResult(True, "Invalid safety level. Choose: low, medium, or high.")
             
         config["safety_level"] = level
-        _save_policy(config)
+        _save_policy(config, context.data_dir)
         return SkillResult(True, f"🛡️ Safety level updated to: **{level.upper()}**")
         
     if lowered in ("safety status", "safety audit", "safety diagnostics"):

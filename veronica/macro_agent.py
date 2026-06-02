@@ -11,10 +11,12 @@ import threading
 from pathlib import Path
 from .skills import AssistantContext, SkillResult
 
-def get_macros_dir() -> Path:
-    data_dir = Path(os.path.expanduser("~")) / ".veronica" / "macros"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return data_dir
+def get_macros_dir(data_dir: Path | None = None) -> Path:
+    if data_dir is None:
+        data_dir = Path(os.path.expanduser("~")) / ".veronica"
+    macros_dir = data_dir / "macros"
+    macros_dir.mkdir(parents=True, exist_ok=True)
+    return macros_dir
 
 _recording_macro = False
 _recorded_actions = []
@@ -183,7 +185,7 @@ def handle_macro_request(message: str, context: AssistantContext) -> SkillResult
         _record_start_time = time.time()
         _recording_macro = True
         
-        # Save active name in context temp dict (use notes as a simple bridge or global name)
+        # Save active name in context temp dict
         context.ensure_data_dir()
         temp_file = context.data_dir / "temp_macro_name.txt"
         temp_file.write_text(macro_name, encoding="utf-8")
@@ -212,7 +214,7 @@ def handle_macro_request(message: str, context: AssistantContext) -> SkillResult
             return SkillResult(True, f"⚠️ Stopped recording. No actions were captured for macro '{macro_name}'.")
             
         # Save macro file
-        macro_path = get_macros_dir() / f"{macro_name}.json"
+        macro_path = get_macros_dir(context.data_dir) / f"{macro_name}.json"
         with open(macro_path, "w", encoding="utf-8") as f:
             json.dump(_recorded_actions, f, indent=2)
             
@@ -222,7 +224,7 @@ def handle_macro_request(message: str, context: AssistantContext) -> SkillResult
     play_prefix = "play macro " if lowered.startswith("play macro ") else "run macro "
     if lowered.startswith("play macro ") or lowered.startswith("run macro "):
         macro_name = message[len(play_prefix):].strip()
-        macro_path = get_macros_dir() / f"{macro_name}.json"
+        macro_path = get_macros_dir(context.data_dir) / f"{macro_name}.json"
         
         if not macro_path.exists():
             return SkillResult(True, f"❌ Macro '{macro_name}' not found.")
@@ -241,7 +243,7 @@ def handle_macro_request(message: str, context: AssistantContext) -> SkillResult
 
     # 4. List Macros
     if lowered == "list macros":
-        macros_dir = get_macros_dir()
+        macros_dir = get_macros_dir(context.data_dir)
         files = list(macros_dir.glob("*.json"))
         if not files:
             return SkillResult(True, "📁 No macros saved yet. Try: 'record macro my_work'")

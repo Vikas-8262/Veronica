@@ -11,13 +11,14 @@ from pathlib import Path
 from .skills import AssistantContext, SkillResult
 
 # File to store policy and stats persistent data
-def _get_router_data_path() -> Path:
-    data_dir = Path(os.path.expanduser("~")) / ".veronica"
+def _get_router_data_path(data_dir: Path | None = None) -> Path:
+    if data_dir is None:
+        data_dir = Path(os.path.expanduser("~")) / ".veronica"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir / "router_config.json"
 
-def _load_config() -> dict:
-    path = _get_router_data_path()
+def _load_config(data_dir: Path | None = None) -> dict:
+    path = _get_router_data_path(data_dir)
     if path.exists():
         try:
             return json.loads(path.read_text(encoding="utf-8"))
@@ -30,8 +31,8 @@ def _load_config() -> dict:
         "saved_cents": 0.0
     }
 
-def _save_config(config: dict):
-    path = _get_router_data_path()
+def _save_config(config: dict, data_dir: Path | None = None):
+    path = _get_router_data_path(data_dir)
     try:
         path.write_text(json.dumps(config, indent=2), encoding="utf-8")
     except Exception:
@@ -105,7 +106,7 @@ def generate_local_response(message: str) -> str:
 # ──────────────────────────────────────────────
 def handle_router_request(message: str, context: AssistantContext) -> SkillResult:
     lowered = message.lower().strip()
-    config = _load_config()
+    config = _load_config(context.data_dir)
     
     if lowered.startswith("set router policy "):
         policy = message[len("set router policy "):].strip().lower()
@@ -113,7 +114,7 @@ def handle_router_request(message: str, context: AssistantContext) -> SkillResul
             return SkillResult(True, "Invalid policy. Choose: local, gemini, or auto.")
             
         config["policy"] = policy
-        _save_config(config)
+        _save_config(config, context.data_dir)
         return SkillResult(True, f"🌐 Router policy updated to: **{policy.upper()}**")
         
     if lowered in ("router status", "router diagnostic", "router diagnostics"):
@@ -140,7 +141,7 @@ def handle_router_request(message: str, context: AssistantContext) -> SkillResul
 # ──────────────────────────────────────────────
 def route_and_execute(message: str, context: AssistantContext, gemini_fallback_fn) -> str:
     """Invoked in the main loop to execute the query using the configured policy."""
-    config = _load_config()
+    config = _load_config(context.data_dir)
     policy = config["policy"]
     
     start_time = time.time()
@@ -154,7 +155,7 @@ def route_and_execute(message: str, context: AssistantContext, gemini_fallback_f
         config["routed_local"] += 1
         # Estimate saving ~0.01 cents ($0.0001) per local query compared to external API call
         config["saved_cents"] += 0.0001
-        _save_config(config)
+        _save_config(config, context.data_dir)
         
         print(f"   [Router] Routed LOCAL (Latency: {latency:.1f}ms, Cost Saved)")
         return response
@@ -165,7 +166,7 @@ def route_and_execute(message: str, context: AssistantContext, gemini_fallback_f
         
         # Log stats
         config["routed_gemini"] += 1
-        _save_config(config)
+        _save_config(config, context.data_dir)
         
         print(f"   [Router] Routed GEMINI (Latency: {latency:.1f}ms)")
         return response

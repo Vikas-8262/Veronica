@@ -14,13 +14,14 @@ from pathlib import Path
 from .skills import AssistantContext, SkillResult
 
 # Persistence path for background jobs: ~/.veronica/jobs.json
-def _get_jobs_file() -> Path:
-    data_dir = Path(os.path.expanduser("~")) / ".veronica"
+def _get_jobs_file(data_dir: Path | None = None) -> Path:
+    if data_dir is None:
+        data_dir = Path(os.path.expanduser("~")) / ".veronica"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir / "jobs.json"
 
-def _load_jobs() -> dict:
-    path = _get_jobs_file()
+def _load_jobs(data_dir: Path | None = None) -> dict:
+    path = _get_jobs_file(data_dir)
     if path.exists():
         try:
             return json.loads(path.read_text(encoding="utf-8"))
@@ -28,8 +29,8 @@ def _load_jobs() -> dict:
             pass
     return {}
 
-def _save_jobs(jobs: dict):
-    path = _get_jobs_file()
+def _save_jobs(jobs: dict, data_dir: Path | None = None):
+    path = _get_jobs_file(data_dir)
     try:
         path.write_text(json.dumps(jobs, indent=2), encoding="utf-8")
     except Exception:
@@ -62,16 +63,16 @@ def is_runner_request(message: str) -> bool:
 # ──────────────────────────────────────────────
 # Background Worker Function
 # ──────────────────────────────────────────────
-def _job_worker(job_id: str, commands: list[str]):
+def _job_worker(job_id: str, commands: list[str], data_dir: Path):
     from .assistant import Assistant, AssistantConfig
 
-    # Instantiate assistant dynamically to prevent circular imports
-    assistant = Assistant(AssistantConfig(name="VeronicaJobRunner", start_reminder_thread=False))
+    # Instantiate assistant dynamically to prevent circular imports and use correct data_dir
+    assistant = Assistant(AssistantConfig(name="VeronicaJobRunner", start_reminder_thread=False, data_dir=data_dir))
     
     for idx, cmd in enumerate(commands):
         # Check cancellation
         with _jobs_lock:
-            jobs = _load_jobs()
+            jobs = _load_jobs(data_dir)
             job = jobs.get(job_id)
             if not job or job["status"] == "cancelled":
                 return
@@ -81,7 +82,7 @@ def _job_worker(job_id: str, commands: list[str]):
             job["current_step"] = idx
             job["steps"][idx]["status"] = "running"
             job["steps"][idx]["started_at"] = time.time()
-            _save_jobs(jobs)
+            _save_jobs(jobs, data_dir)
 
         # Execute step with retries
         success = False
@@ -91,7 +92,7 @@ def _job_worker(job_id: str, commands: list[str]):
         for attempt in range(1, max_retries + 1):
             # Check cancel in-between retries
             with _jobs_lock:
-                jobs = _load_jobs()
+                jobs = _load_jobs(data_dir)
                 if jobs.get(job_id, {}).get("status") == "cancelled":
                     return
 
@@ -112,7 +113,7 @@ def _job_worker(job_id: str, commands: list[str]):
 
         # Update step status
         with _jobs_lock:
-            jobs = _load_jobs()
+            jobs = _load_jobs(data_dir)
             job = jobs.get(job_id)
             if not job:
                 return
@@ -127,18 +128,18 @@ def _job_worker(job_id: str, commands: list[str]):
             else:
                 step["status"] = "failed"
                 job["status"] = "failed"
-                _save_jobs(jobs)
+                _save_jobs(jobs, data_dir)
                 break # Stop entire pipeline on step failure
             
-            _save_jobs(jobs)
+            _save_jobs(jobs, data_dir)
 
     # Wrap up job status
     with _jobs_lock:
-        jobs = _load_jobs()
+        jobs = _load_jobs(data_dir)
         job = jobs.get(job_id)
         if job and job["status"] == "running":
             job["status"] = "completed"
-            _save_jobs(jobs)
+            _save_jobs(jobs, data_dir)
             
     # Cleanup thread mapping
     _active_threads.pop(job_id, None)
@@ -171,12 +172,12 @@ def handle_runner_request(message: str, context: AssistantContext) -> SkillResul
         }
         
         with _jobs_lock:
-            jobs = _load_jobs()
+            jobs = _load_jobs(context.data_dir)
             jobs[job_id] = job_info
-            _save_jobs(jobs)
+            _save_jobs(jobs, context.data_dir)
             
         # Spawn background execution thread
-        t = threading.Thread(target=_job_worker, args=(job_id, commands), daemon=True)
+        t = threading.Thread(target=_job_worker, args=(job_id, commands, context.data_dir), daemon=True)
         _active_threads[job_id] = t
         t.start()
         
@@ -185,7 +186,7 @@ def handle_runner_request(message: str, context: AssistantContext) -> SkillResul
     # 2. List Jobs
     if lowered in ("list jobs", "list tasks"):
         with _jobs_lock:
-            jobs = _load_jobs()
+            jobs = _load_jobs(context.data_dir)
             
         if not jobs:
             return SkillResult(True, "No background jobs have been created yet.")
@@ -208,7 +209,7 @@ def handle_runner_request(message: str, context: AssistantContext) -> SkillResul
         if lowered.startswith(prefix):
             job_id = parse_id(prefix)
             with _jobs_lock:
-                jobs = _load_jobs()
+                jobs = _load_jobs(context.data_dir)
             job = jobs.get(job_id)
             if not job:
                 return SkillResult(True, f"Job '{job_id}' not found.")
@@ -236,7 +237,7 @@ def handle_runner_request(message: str, context: AssistantContext) -> SkillResul
         if lowered.startswith(prefix):
             job_id = parse_id(prefix)
             with _jobs_lock:
-                jobs = _load_jobs()
+                jobs = _load_jobs(context.data_dir)
                 job = jobs.get(job_id)
                 if not job:
                     return SkillResult(True, f"Job '{job_id}' not found.")
@@ -248,7 +249,7 @@ def handle_runner_request(message: str, context: AssistantContext) -> SkillResul
                 for step in job["steps"]:
                     if step["status"] in ("pending", "running"):
                         step["status"] = "cancelled"
-                _save_jobs(jobs)
+                _save_jobs(jobs, context.data_dir)
                 
             return SkillResult(True, f"🛑 Cancelled active background job **{job_id}**.")
 
@@ -258,7 +259,7 @@ def handle_runner_request(message: str, context: AssistantContext) -> SkillResul
         if lowered.startswith(prefix):
             job_id = parse_id(prefix)
             with _jobs_lock:
-                jobs = _load_jobs()
+                jobs = _load_jobs(context.data_dir)
                 job = jobs.get(job_id)
                 if not job:
                     return SkillResult(True, f"Job '{job_id}' not found.")
@@ -274,9 +275,9 @@ def handle_runner_request(message: str, context: AssistantContext) -> SkillResul
                         step["status"] = "pending"
                         step["output"] = ""
                     commands.append(step["command"])
-                _save_jobs(jobs)
+                _save_jobs(jobs, context.data_dir)
                 
-            t = threading.Thread(target=_job_worker, args=(job_id, commands), daemon=True)
+            t = threading.Thread(target=_job_worker, args=(job_id, commands, context.data_dir), daemon=True)
             _active_threads[job_id] = t
             t.start()
             return SkillResult(True, f"🔄 Retrying failed background job **{job_id}**.")

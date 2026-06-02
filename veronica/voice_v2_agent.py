@@ -10,13 +10,14 @@ import importlib
 from pathlib import Path
 from .skills import AssistantContext, SkillResult
 
-def get_voice_config_path() -> Path:
-    data_dir = Path(os.path.expanduser("~")) / ".veronica"
+def get_voice_config_path(data_dir: Path | None = None) -> Path:
+    if data_dir is None:
+        data_dir = Path(os.path.expanduser("~")) / ".veronica"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir / "voice_config.json"
 
-def load_voice_config() -> dict:
-    path = get_voice_config_path()
+def load_voice_config(data_dir: Path | None = None) -> dict:
+    path = get_voice_config_path(data_dir)
     if path.exists():
         try:
             return json.loads(path.read_text(encoding="utf-8"))
@@ -27,8 +28,8 @@ def load_voice_config() -> dict:
         "gender": "female"
     }
 
-def save_voice_config(config: dict):
-    path = get_voice_config_path()
+def save_voice_config(config: dict, data_dir: Path | None = None):
+    path = get_voice_config_path(data_dir)
     try:
         path.write_text(json.dumps(config, indent=2), encoding="utf-8")
     except Exception:
@@ -50,7 +51,7 @@ def is_voice_v2_request(message: str) -> bool:
 # ──────────────────────────────────────────────
 def handle_voice_v2_request(message: str, context: AssistantContext) -> SkillResult:
     lowered = message.lower().strip()
-    config = load_voice_config()
+    config = load_voice_config(context.data_dir)
     
     if lowered in ("change voice", "change your voice"):
         return SkillResult(True, "🗣️ To change my voice, use commands like `set voice gender male/female` or `set voice speed slow/normal/fast`.")
@@ -80,7 +81,7 @@ def handle_voice_v2_request(message: str, context: AssistantContext) -> SkillRes
         
         if speed in rates:
             config["rate"] = rates[speed]
-            save_voice_config(config)
+            save_voice_config(config, context.data_dir)
             return SkillResult(True, f"🗣️ Voice speed updated to: **{speed.upper()}** ({rates[speed]} WPM).")
         
         # Try raw integer WPM if provided
@@ -88,7 +89,7 @@ def handle_voice_v2_request(message: str, context: AssistantContext) -> SkillRes
             wpm = int(speed)
             if 50 <= wpm <= 400:
                 config["rate"] = wpm
-                save_voice_config(config)
+                save_voice_config(config, context.data_dir)
                 return SkillResult(True, f"🗣️ Voice speed rate updated to: **{wpm} WPM**.")
         except ValueError:
             pass
@@ -99,7 +100,7 @@ def handle_voice_v2_request(message: str, context: AssistantContext) -> SkillRes
         gender = message[len("set voice gender "):].strip().lower()
         if gender in ("male", "female"):
             config["gender"] = gender
-            save_voice_config(config)
+            save_voice_config(config, context.data_dir)
             return SkillResult(True, f"🗣️ Voice gender updated to: **{gender.upper()}**.")
         return SkillResult(True, "Invalid voice parameter. Choose: male or female.")
 

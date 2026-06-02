@@ -19,13 +19,14 @@ def _optional_module(module_name: str):
     except ImportError:
         return None
 
-def _get_keychain_path() -> Path:
-    data_dir = Path(os.path.expanduser("~")) / ".veronica"
+def _get_keychain_path(data_dir: Path | None = None) -> Path:
+    if data_dir is None:
+        data_dir = Path(os.path.expanduser("~")) / ".veronica"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir / "keychain.json"
 
-def _load_keychain() -> dict:
-    path = _get_keychain_path()
+def _load_keychain(data_dir: Path | None = None) -> dict:
+    path = _get_keychain_path(data_dir)
     if path.exists():
         try:
             return json.loads(path.read_text(encoding="utf-8"))
@@ -33,8 +34,8 @@ def _load_keychain() -> dict:
             pass
     return {}
 
-def _save_keychain(keychain: dict):
-    path = _get_keychain_path()
+def _save_keychain(keychain: dict, data_dir: Path | None = None):
+    path = _get_keychain_path(data_dir)
     try:
         path.write_text(json.dumps(keychain, indent=2), encoding="utf-8")
     except Exception:
@@ -101,7 +102,7 @@ def _type_credentials_worker(username: str, password_obf: str, delay: int = 5):
 # ──────────────────────────────────────────────
 def handle_login_request(message: str, context: AssistantContext) -> SkillResult:
     lowered = message.lower().strip()
-    keychain = _load_keychain()
+    keychain = _load_keychain(context.data_dir)
     
     # 1. Set login credentials
     if lowered.startswith("set login credential for "):
@@ -122,7 +123,7 @@ def handle_login_request(message: str, context: AssistantContext) -> SkillResult
             "username": username,
             "password": _obfuscate(password)
         }
-        _save_keychain(keychain)
+        _save_keychain(keychain, context.data_dir)
         return SkillResult(True, f"🔑 Credentials saved for service: **{service}**.")
         
     # 2. Delete login credentials
@@ -132,7 +133,7 @@ def handle_login_request(message: str, context: AssistantContext) -> SkillResult
             return SkillResult(True, f"❌ Service '{service}' not found in keychain.")
             
         del keychain[service]
-        _save_keychain(keychain)
+        _save_keychain(keychain, context.data_dir)
         return SkillResult(True, f"🗑️ Credentials for service '{service}' deleted.")
         
     # 3. List login services
