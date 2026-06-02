@@ -13,6 +13,7 @@ class TestApiTesterAgent(unittest.TestCase):
         
         # Mock requests
         self.mock_requests = MagicMock()
+        self.mock_requests.__spec__ = MagicMock()
         
         mock_get_response = MagicMock()
         mock_get_response.status_code = 200
@@ -33,7 +34,13 @@ class TestApiTesterAgent(unittest.TestCase):
         
         sys.modules["requests"] = self.mock_requests
 
+        from unittest.mock import patch
+        self.patcher = patch("importlib.util.find_spec")
+        self.mock_find_spec = self.patcher.start()
+        self.mock_find_spec.return_value = MagicMock()
+
     def tearDown(self):
+        self.patcher.stop()
         if self.orig_requests is not None:
             sys.modules["requests"] = self.orig_requests
         elif "requests" in sys.modules:

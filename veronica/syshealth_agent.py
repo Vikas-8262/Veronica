@@ -12,7 +12,10 @@ def _optional_module(module_name: str):
 def is_syshealth_request(message: str) -> bool:
     """Matcher for System Health requests."""
     lowered = message.lower().strip()
-    return any(phrase in lowered for phrase in ("cpu", "ram", "memory", "system health", "disk usage", "computer health"))
+    if any(phrase in lowered for phrase in ("system health", "disk usage", "computer health")):
+        return True
+    import re
+    return bool(re.search(r"\b(cpu|ram|memory)\b", lowered))
 
 def handle_syshealth_request(message: str, context: AssistantContext) -> SkillResult:
     """Handler to check the hardware telemetry of the PC."""
