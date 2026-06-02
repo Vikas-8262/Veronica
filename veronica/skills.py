@@ -164,7 +164,6 @@ def build_default_skills() -> list[Skill]:
         Skill("news", _is_news_request, _news),
         Skill("ocr", _is_ocr_request, _ocr),
         Skill("openclaw", _is_openclaw_request, _openclaw),
-        Skill("core", _is_core_request, _core),
         Skill("fun", _is_fun_request, _fun),
         Skill("advanced", _is_advanced_request, _advanced),
         Skill("help", _contains_any("help", "what can you do"), _help),
@@ -204,6 +203,7 @@ def build_default_skills() -> list[Skill]:
         Skill("screen", is_screen_request, handle_screen_request),
         Skill("coder", is_coder_request, handle_coder_request),
         Skill("rag", is_rag_request, handle_rag_request),
+        Skill("core", _is_core_request, _core),
     ]
     core_skills.extend(get_dynamic_plugin_skills())
     return core_skills
