@@ -1,0 +1,17 @@
+# Optional full install for every Veronica integration.
+# Core assistant code still runs with the Python standard library only.
+edge-tts>=7.0.0
+pygame>=2.5.2
+pyttsx3>=2.90
+requests>=2.31.0
+pywhatkit>=5.4
+flask>=3.0.0
+opencv-python>=4.9.0
+face-recognition>=1.3.0
+numpy>=1.26.0
+pystray>=0.19.5
+pillow>=10.0.0
+psutil>=5.9.0
+pyautogui>=0.9.54
+pyperclip>=1.8.2
+pytesseract>=0.3.10

@@ -1,0 +1,3 @@
+# Veronica runs with the Python standard library only.
+# Install requirements-all.txt only if you want every optional integration.
+# Install targeted requirements-*.txt files for individual optional features.
