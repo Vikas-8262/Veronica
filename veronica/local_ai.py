@@ -87,17 +87,33 @@ class LocalAIBackend:
         }
 
     def reply(self, message: str, context: AssistantContext) -> str:
-        provider = _ai_provider()
+        provider = _ai_provider(context.data_dir)
         
+        history = _load_history(context.data_dir)
+        context_str = ""
+        if history:
+            context_str = "Conversation history:\n"
+            for item in history:
+                context_str += f"User: {item['user']}\nAssistant: {item['assistant']}\n"
+            context_str += "\n"
+            
+        full_prompt = f"{context_str}User request: {message}"
+
+        response_text = ""
         if provider == "ollama":
-            ollama_text = _ollama_reply(message)
+            ollama_text = _ollama_reply(full_prompt)
             if ollama_text:
-                return ollama_text
+                response_text = ollama_text
                 
-        if provider == "gemini":
-            gemini_text = _gemini_reply(message)
+        elif provider == "gemini":
+            gemini_text = _gemini_reply(full_prompt)
             if gemini_text:
-                return gemini_text
+                response_text = gemini_text
+
+        if response_text:
+            history.append({"user": message, "assistant": response_text})
+            _save_history(context.data_dir, history)
+            return response_text
 
         tokens = _content_tokens(message)
         if not tokens:
@@ -107,12 +123,16 @@ class LocalAIBackend:
         keywords = _keywords(tokens)
 
         if score >= 0.18:
-            return intent.response_template.format(
+            response_text = intent.response_template.format(
                 assistant=context.assistant_name,
                 keywords=_format_keywords(keywords),
             )
+        else:
+            response_text = self._synthesize_general_response(message, context, keywords)
 
-        return self._synthesize_general_response(message, context, keywords)
+        history.append({"user": message, "assistant": response_text})
+        _save_history(context.data_dir, history)
+        return response_text
 
     def _classify(self, tokens: list[str]) -> tuple[LocalIntent, float]:
         message_vector = _vectorize_tokens(tokens)
@@ -151,7 +171,14 @@ def _optional_module(module_name: str):
     return importlib.import_module(module_name)
 
 
-def _ai_provider() -> str:
+def _ai_provider(data_dir: Path | None = None) -> str:
+    if data_dir is not None:
+        path = data_dir / "brain_config.json"
+        if path.exists():
+            try:
+                return json.loads(path.read_text(encoding="utf-8")).get("provider", "local")
+            except Exception:
+                pass
     provider = os.getenv("VERONICA_AI_PROVIDER", "").strip().lower()
     if provider:
         return provider
@@ -328,7 +355,106 @@ def _question_strategy(message: str) -> str:
     if lowered.startswith("why"):
         return "I would compare likely causes, available evidence, and the assumptions behind each cause."
     if lowered.startswith("what"):
-        return "I would define the terms, identify the desired output, and then choose the smallest useful answer."
+        return "I would define the terms, identify the desired output, and then choose the simplest useful answer."
     if lowered.startswith("can") or lowered.startswith("could"):
         return "I would check capability, risk, required inputs, and the safest way to proceed."
     return "I would treat it as a goal, identify missing information, and choose the next concrete step."
+
+# ──────────────────────────────────────────────
+# Chat History and Brain Switch Config
+# ──────────────────────────────────────────────
+def _get_history_file(data_dir: Path) -> Path:
+    return data_dir / "chat_history.json"
+
+def _load_history(data_dir: Path, limit: int = 5) -> list[dict[str, str]]:
+    path = _get_history_file(data_dir)
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))[-limit:]
+        except Exception:
+            pass
+    return []
+
+def _save_history(data_dir: Path, history: list[dict[str, str]]):
+    path = _get_history_file(data_dir)
+    try:
+        path.write_text(json.dumps(history, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+def _get_brain_file(data_dir: Path) -> Path:
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir / "brain_config.json"
+
+def _load_brain_provider(data_dir: Path) -> str:
+    path = _get_brain_file(data_dir)
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8")).get("provider", "local")
+        except Exception:
+            pass
+    prov = os.getenv("VERONICA_AI_PROVIDER", "").strip().lower()
+    if prov in ("local", "ollama", "gemini"):
+        return prov
+    if os.getenv("VERONICA_USE_GEMINI", "").strip().lower() in ("1", "true", "yes", "on"):
+        return "gemini"
+    if os.getenv("VERONICA_USE_OLLAMA", "").strip().lower() in ("1", "true", "yes", "on"):
+        return "ollama"
+    return "local"
+
+def _save_brain_provider(data_dir: Path, provider: str):
+    path = _get_brain_file(data_dir)
+    try:
+        path.write_text(json.dumps({"provider": provider}, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+def is_brain_request(message: str) -> bool:
+    lowered = message.lower().strip()
+    return (
+        lowered.startswith("set brain ")
+        or lowered in ("brain status", "brain diagnostic", "brain diagnostics")
+    )
+
+def handle_brain_request(message: str, context: AssistantContext) -> SkillResult:
+    lowered = message.lower().strip()
+    if lowered.startswith("set brain "):
+        provider = lowered[10:].strip()
+        if provider not in ("local", "ollama", "gemini"):
+            return SkillResult(True, "Invalid provider. Choose: local, ollama, or gemini.")
+        _save_brain_provider(context.data_dir, provider)
+        return SkillResult(True, f"🧠 Brain provider updated to: **{provider.upper()}**")
+        
+    if lowered in ("brain status", "brain diagnostic", "brain diagnostics"):
+        provider = _load_brain_provider(context.data_dir)
+        ollama_status = "Not Checked"
+        if provider == "ollama":
+            requests = _optional_module("requests")
+            if requests is None:
+                ollama_status = "Ollama requires requests library."
+            else:
+                host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+                try:
+                    resp = requests.get(f"{host}/api/tags", timeout=3)
+                    if resp.status_code == 200:
+                        models = [m["name"] for m in resp.json().get("models", [])]
+                        ollama_status = f"✅ Connected (Models: {', '.join(models) if models else 'None'})"
+                    else:
+                        ollama_status = "⚠️ Error status from Ollama endpoint."
+                except Exception as e:
+                    ollama_status = f"❌ Offline ({e})"
+        elif provider == "gemini":
+            ollama_status = "N/A (using cloud Gemini)"
+        else:
+            ollama_status = "N/A (using keyword similarity)"
+            
+        report = (
+            f"🧠 **AI Brain Configuration**\n"
+            f"───────────────────────────\n"
+            f"• Current Brain: **{provider.upper()}**\n"
+            f"• Ollama Diagnostics: {ollama_status}\n"
+            f"───────────────────────────\n"
+            f"Use `set brain <local|ollama|gemini>` to select AI brain node."
+        )
+        return SkillResult(True, report)
+    return SkillResult(False, "")

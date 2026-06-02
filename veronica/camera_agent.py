@@ -15,7 +15,10 @@ def _optional_module(module_name: str):
 def is_camera_request(message: str) -> bool:
     """Matcher for Camera requests."""
     lowered = message.lower().strip()
-    return any(phrase in lowered for phrase in ("look at me", "take a picture", "what is in the camera", "use webcam", "what do you see in the camera"))
+    return any(phrase in lowered for phrase in (
+        "look at me", "take a picture", "what is in the camera", "use webcam",
+        "what do you see in the camera", "describe scene", "webcam scan", "webcam diagnostics"
+    ))
 
 def handle_camera_request(message: str, context: AssistantContext) -> SkillResult:
     """Handler to take a picture with the webcam and analyze it via Gemini."""

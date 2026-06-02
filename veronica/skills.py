@@ -117,6 +117,7 @@ def build_default_skills() -> list[Skill]:
     from .research_agent import is_research_request, handle_research_request
     from .screen_agent import is_screen_request, handle_screen_request
     from .coder_agent import is_coder_request, handle_coder_request
+    from .local_ai import is_brain_request, handle_brain_request
     from .memory_agent import is_memory_request, handle_memory_request
     from .rag_agent import is_rag_request, handle_rag_request
     from .router_agent import is_router_request, handle_router_request
@@ -143,6 +144,7 @@ def build_default_skills() -> list[Skill]:
         # 1. Exit / Meta Control
         Skill("exit", _contains_any("exit", "quit"), _exit),
         Skill("router", is_router_request, handle_router_request),
+        Skill("brain", is_brain_request, handle_brain_request),
         Skill("plugins", is_plugin_request, handle_plugin_request),
         Skill("runner", is_runner_request, handle_runner_request),
         

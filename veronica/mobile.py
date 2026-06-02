@@ -7,6 +7,8 @@ started.
 
 from __future__ import annotations
 
+import os
+import json
 import importlib
 import importlib.util
 import socket
@@ -92,6 +94,8 @@ MOBILE_UI = """<!DOCTYPE html>
     justify-content: space-between;
     align-items: center;
     background: rgba(3, 7, 18, 0.4);
+    flex-wrap: wrap;
+    gap: 15px;
   }}
 
   .brand {{
@@ -133,6 +137,13 @@ MOBILE_UI = """<!DOCTYPE html>
     0% {{ opacity: 0.3; box-shadow: 0 0 2px #00f5c4; }}
     50% {{ opacity: 1; box-shadow: 0 0 10px #00f5c4; }}
     100% {{ opacity: 0.3; box-shadow: 0 0 2px #00f5c4; }}
+  }}
+
+  .controls-row {{
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
   }}
 
   .voice-control {{
@@ -325,8 +336,39 @@ MOBILE_UI = """<!DOCTYPE html>
     padding: 30px;
     display: flex;
     flex-direction: column;
-    height: 480px;
+    height: 500px;
     background: rgba(3, 7, 18, 0.1);
+  }}
+
+  .tab-btn {{
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    outline: none;
+  }}
+
+  .tab-btn.active {{
+    background: rgba(6, 182, 212, 0.12);
+    border-color: #00f5c4;
+    color: #00f5c4;
+    box-shadow: 0 0 10px rgba(0, 245, 196, 0.15);
+  }}
+
+  .tab-content {{
+    display: none;
+  }}
+
+  .tab-content.active {{
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    animation: fadeIn 0.3s ease;
   }}
 
   .console {{
@@ -337,13 +379,13 @@ MOBILE_UI = """<!DOCTYPE html>
     padding: 20px;
     overflow-y: auto;
     font-family: 'Courier New', Courier, monospace;
-    font-size: 14px;
+    font-size: 13px;
     line-height: 1.5;
     margin-bottom: 20px;
     scroll-behavior: smooth;
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 12px;
   }}
 
   .console::-webkit-scrollbar {{
@@ -366,7 +408,7 @@ MOBILE_UI = """<!DOCTYPE html>
 
   .log-time {{
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 10px;
     margin-right: 8px;
   }}
 
@@ -412,7 +454,7 @@ MOBILE_UI = """<!DOCTYPE html>
     color: #030712;
     border: none;
     border-radius: 14px;
-    padding: 0 25px;
+    padding: 0 20px;
     font-weight: 700;
     cursor: pointer;
     font-family: 'Orbitron', sans-serif;
@@ -499,15 +541,24 @@ MOBILE_UI = """<!DOCTYPE html>
       <div class="status-dot"></div>
       <h1>{assistant_name}</h1>
     </div>
-    <div class="status-indicator">
-      SYS ONLINE • PORT 5000
-    </div>
-    <div class="voice-control">
-      <span style="font-size: 11px; font-family: 'Orbitron', sans-serif; color: var(--text-muted);">Voice Feedback</span>
-      <label class="switch">
-        <input type="checkbox" id="voice-toggle" checked>
-        <span class="slider"></span>
-      </label>
+    
+    <div class="controls-row">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 11px; font-family: 'Orbitron', sans-serif; color: var(--text-muted);">Brain Node</span>
+        <select id="brain-select" onchange="changeBrain()" style="background: #111827; color: #00f5c4; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 11px; font-family: 'Orbitron'; outline: none; cursor: pointer;">
+          <option value="local">LOCAL (KEYWORDS)</option>
+          <option value="ollama">OLLAMA (OFFLINE LLM)</option>
+          <option value="gemini">GEMINI (CLOUD)</option>
+        </select>
+      </div>
+
+      <div class="voice-control">
+        <span style="font-size: 11px; font-family: 'Orbitron', sans-serif; color: var(--text-muted);">Vocal Audio</span>
+        <label class="switch">
+          <input type="checkbox" id="voice-toggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
     </div>
   </div>
 
@@ -555,17 +606,66 @@ MOBILE_UI = """<!DOCTYPE html>
     </div>
 
     <div class="right-panel">
-      <div class="console" id="console-logs">
-        <div class="log-entry">
-          <span class="log-time" id="init-time"></span>
-          <span class="log-assistant">{assistant_name}:</span>
-          <span class="log-text"> Jarvis-style web telemetry and neural speech node initialized. Waiting for input...</span>
+      <div class="tabs-header" style="display: flex; gap: 8px; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+        <button class="tab-btn active" id="btn-terminal" onclick="switchTab('terminal')">TERMINAL</button>
+        <button class="tab-btn" id="btn-iot" onclick="switchTab('iot')">SMART HOME</button>
+        <button class="tab-btn" id="btn-vision" onclick="switchTab('vision')">VISION</button>
+        <button class="tab-btn" id="btn-scripts" onclick="switchTab('scripts')">SCRIPTS</button>
+      </div>
+
+      <!-- Tab 1: Terminal Console -->
+      <div class="tab-content active" id="tab-terminal">
+        <div class="console" id="console-logs">
+          <div class="log-entry">
+            <span class="log-time" id="init-time"></span>
+            <span class="log-assistant">{assistant_name}:</span>
+            <span class="log-text"> Jarvis-style web telemetry and neural speech node initialized. Waiting for input...</span>
+          </div>
+        </div>
+
+        <div class="input-container">
+          <input type="text" id="cmd-input" placeholder="Enter voice protocol command..." onkeydown="if(event.key==='Enter') sendCmd()">
+          <button class="send-btn" id="send-button" onclick="sendCmd()">SEND</button>
         </div>
       </div>
 
-      <div class="input-container">
-        <input type="text" id="cmd-input" placeholder="Enter voice protocol command..." onkeydown="if(event.key==='Enter') sendCmd()">
-        <button class="send-btn" id="send-button" onclick="sendCmd()">SEND</button>
+      <!-- Tab 2: Smart Home IoT -->
+      <div class="tab-content" id="tab-iot">
+        <div id="iot-devices-list" style="display: flex; flex-direction: column; gap: 12px; overflow-y: auto; flex: 1; max-height: 380px; padding-right: 5px;">
+          <div style="color: var(--text-muted); font-size: 13px; text-align: center; margin-top: 30px;">Loading smart home devices...</div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Webcam Vision Security -->
+      <div class="tab-content" id="tab-vision">
+        <div style="display: flex; flex-direction: column; gap: 15px; flex: 1; overflow-y: auto; padding-right: 5px;">
+          <div class="tel-card" style="text-align: left;">
+            <div class="tel-label">Diagnostics</div>
+            <div style="margin-top: 10px; font-size: 13px; line-height: 1.6;">
+              <div>• Registered Face Samples: <strong id="face-count-val" style="color: #00f5c4;">0</strong></div>
+              <div>• WhatsApp Alerts: <strong id="wa-alert-val" style="color: #00f5c4;">Active (Same WiFi)</strong></div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="send-btn" onclick="describeScene()" style="flex: 1;">DESCRIBE SCENE</button>
+            <button class="send-btn" onclick="quick('register face')" style="flex: 1; background: linear-gradient(135deg, #f59e0b, #ef4444); box-shadow: 0 0 15px rgba(245, 158, 11, 0.2);">SCAN FACE</button>
+          </div>
+          <div class="console" id="vision-logs" style="flex: 1; min-height: 150px; font-size: 12px;">
+            <div style="color: var(--text-muted);">[Vision Core]: Ready to describe scenes...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 4: Generated Scripts Executor -->
+      <div class="tab-content" id="tab-scripts">
+        <div style="display: flex; flex-direction: column; gap: 15px; flex: 1; overflow-y: auto; padding-right: 5px;">
+          <div id="scripts-list" style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="color: var(--text-muted); font-size: 13px; text-align: center;">Loading scripts...</div>
+          </div>
+          <div class="console" id="scripts-output" style="flex: 1; min-height: 150px; font-size: 12px;">
+            <div style="color: var(--text-muted);">[Execution Core]: Output will load here on script run.</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -580,9 +680,9 @@ MOBILE_UI = """<!DOCTYPE html>
         <span class="action-icon">🌤</span>
         <span class="action-name">Weather</span>
       </div>
-      <div class="action-btn" onclick="quick('voice status')">
-        <span class="action-icon">🎙️</span>
-        <span class="action-name">Voice Config</span>
+      <div class="action-btn" onclick="quick('brain status')">
+        <span class="action-icon">🧠</span>
+        <span class="action-name">Brain Config</span>
       </div>
       <div class="action-btn" onclick="quick('safety status')">
         <span class="action-icon">🛡️</span>
@@ -608,7 +708,7 @@ MOBILE_UI = """<!DOCTYPE html>
   function speakText(text) {{
     if (!synthAvailable || !document.getElementById('voice-toggle').checked) return;
     
-    let clean = text.replace(/[*#`_-]/g, '').trim();
+    let clean = text.replace(/[*#`_\-]/g, '').trim();
     window.speechSynthesis.cancel();
     
     let utterance = new SpeechSynthesisUtterance(clean);
@@ -626,6 +726,14 @@ MOBILE_UI = """<!DOCTYPE html>
     if (window.speechSynthesis.onvoiceschanged !== undefined) {{
       window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
     }}
+  }}
+
+  function switchTab(tabId) {{
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    
+    document.getElementById('btn-' + tabId).classList.add('active');
+    document.getElementById('tab-' + tabId).classList.add('active');
   }}
 
   function addLog(sender, text, isUser = false) {{
@@ -699,6 +807,79 @@ MOBILE_UI = """<!DOCTYPE html>
     await execute(cmd);
   }}
 
+  async function changeBrain() {{
+    const select = document.getElementById('brain-select');
+    const brain = select.value;
+    try {{
+      const res = await fetch('/set_brain', {{
+        method: 'POST',
+        headers: {{'Content-Type':'application/json'}},
+        body: JSON.stringify({{brain: brain}})
+      }});
+      const data = await res.json();
+      addLog('SYSTEM', 'Brain provider set to: ' + data.brain.toUpperCase(), false);
+    }} catch(e) {{
+      addLog('SYSTEM', 'Failed to update brain provider.', false);
+    }}
+  }}
+
+  async function toggleDevice(entityId, state) {{
+    try {{
+      await fetch('/iot/toggle', {{
+        method: 'POST',
+        headers: {{'Content-Type':'application/json'}},
+        body: JSON.stringify({{entity_id: entityId, state: state}})
+      }});
+      pollStats();
+    }} catch(e) {{
+      console.warn('Failed to toggle device');
+    }}
+  }}
+
+  async function setTemperature(entityId, temp) {{
+    try {{
+      await fetch('/command', {{
+        method: 'POST',
+        headers: {{'Content-Type':'application/json'}},
+        body: JSON.stringify({{command: `set temperature of ${entityId} to ${temp}`}})
+      }});
+      pollStats();
+    }} catch(e) {{
+      console.warn('Failed to set temperature');
+    }}
+  }}
+
+  async function runScript(filename) {{
+    const outputBox = document.getElementById('scripts-output');
+    outputBox.innerHTML = '<div style="color: #00f5c4;">[System]: Executing script ' + filename + '...</div>';
+    switchTab('scripts');
+    try {{
+      const res = await fetch('/scripts/run', {{
+        method: 'POST',
+        headers: {{'Content-Type':'application/json'}},
+        body: JSON.stringify({{filename: filename}})
+      }});
+      const data = await res.json();
+      outputBox.innerText = data.output || 'No output returned.';
+    }} catch(e) {{
+      outputBox.innerText = 'Failed to execute script.';
+    }}
+  }}
+
+  async function describeScene() {{
+    const outputBox = document.getElementById('vision-logs');
+    outputBox.innerHTML = '<div style="color: #00f5c4;">[System]: Activating camera and running scene diagnostics...</div>';
+    switchTab('vision');
+    try {{
+      const res = await fetch('/camera/describe');
+      const data = await res.json();
+      outputBox.innerText = data.response || 'No description returned.';
+      speakText(data.response);
+    }} catch(e) {{
+      outputBox.innerText = 'Failed to scan camera view.';
+    }}
+  }}
+
   function updateDial(id, value, fillId) {{
     const radius = 28;
     const circumference = 2 * Math.PI * radius;
@@ -739,6 +920,85 @@ MOBILE_UI = """<!DOCTYPE html>
       }}
       if (data.unread_whatsapp !== undefined) {{
         document.getElementById('whatsapp-badge').innerText = data.unread_whatsapp + ' UNREAD';
+      }}
+      if (data.brain !== undefined) {{
+        const select = document.getElementById('brain-select');
+        if (document.activeElement !== select) {{
+          select.value = data.brain;
+        }}
+      }}
+      if (data.known_faces_count !== undefined) {{
+        document.getElementById('face-count-val').innerText = data.known_faces_count;
+      }}
+
+      // Dynamic IoT device loading
+      if (data.iot_devices !== undefined) {{
+        const list = document.getElementById('iot-devices-list');
+        list.innerHTML = '';
+        data.iot_devices.forEach(d => {{
+          const card = document.createElement('div');
+          card.className = 'tel-card';
+          card.style.textAlign = 'left';
+          card.style.display = 'flex';
+          card.style.justifyContent = 'space-between';
+          card.style.alignItems = 'center';
+          card.style.padding = '12px 20px';
+          
+          const info = document.createElement('div');
+          info.innerHTML = "<span style=\\"font-family:'Orbitron'; font-size:12px; color:var(--text-primary);\\">" + d.name + "</span><br><span style=\\"font-size:10px; color:var(--text-muted);\\">" + d.entity_id + "</span>";
+          
+          const ctrl = document.createElement('div');
+          if (d.type === 'climate') {{
+            ctrl.innerHTML = "<span style=\\"font-family:'Orbitron'; color:var(--safety-glow); margin-right:8px;\\">" + d.state + "°C</span>" +
+              "<input type=\\"range\\" min=\\"16\\" max=\\"30\\" value=\\"" + d.state + "\\" onchange=\\"setTemperature('" + d.entity_id + "', this.value)\\" style=\\"width:70px; vertical-align:middle;\\">";
+          }} else {{
+            const isChecked = d.state === 'on' ? 'checked' : '';
+            ctrl.innerHTML = "<label class=\\"switch\\">" +
+              "<input type=\\"checkbox\\" " + isChecked + " onchange=\\"toggleDevice('" + d.entity_id + "', this.checked ? 'on' : 'off')\\">" +
+              "<span class=\\"slider\\"></span>" +
+              "</label>";
+          }}
+          
+          card.appendChild(info);
+          card.appendChild(ctrl);
+          list.appendChild(card);
+        }});
+      }}
+
+      // Dynamic Script list loading
+      if (data.scripts !== undefined) {{
+        const list = document.getElementById('scripts-list');
+        list.innerHTML = '';
+        if (data.scripts.length === 0) {{
+          list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; text-align: center;">No automation scripts generated yet. Try: "write a script that..."</div>';
+        }}
+        data.scripts.forEach(s => {{
+          const row = document.createElement('div');
+          row.className = 'tel-card';
+          row.style.textAlign = 'left';
+          row.style.display = 'flex';
+          row.style.justifyContent = 'space-between';
+          row.style.alignItems = 'center';
+          row.style.padding = '10px 15px';
+          
+          const label = document.createElement('span');
+          label.innerText = s;
+          label.style.fontFamily = 'Courier New';
+          label.style.fontSize = '12px';
+          
+          const btn = document.createElement('button');
+          btn.innerText = 'RUN';
+          btn.className = 'send-btn';
+          btn.style.padding = '4px 10px';
+          btn.style.fontSize = '10px';
+          btn.style.height = 'auto';
+          btn.style.width = 'auto';
+          btn.onclick = () => runScript(s);
+          
+          row.appendChild(label);
+          row.appendChild(btn);
+          list.appendChild(row);
+        }});
       }}
     }} catch(e) {{
       console.warn('Telemetry link offline.');
@@ -932,6 +1192,58 @@ def create_mobile_app(
     def status():
         return flask.jsonify(mobile_status(assistant.config.name, assistant.config.data_dir))
 
+    @app.route("/set_brain", methods=["POST"])
+    def set_brain():
+        data = flask.request.get_json(silent=True) or {}
+        provider = str(data.get("brain", "")).strip().lower()
+        if provider not in ("local", "ollama", "gemini"):
+            return flask.jsonify({"error": "Invalid brain provider"}), 400
+        from .local_ai import _save_brain_provider
+        _save_brain_provider(assistant.config.data_dir, provider)
+        return flask.jsonify({"success": True, "brain": provider})
+
+    @app.route("/iot/toggle", methods=["POST"])
+    def iot_toggle():
+        data = flask.request.get_json(silent=True) or {}
+        entity_id = str(data.get("entity_id", "")).strip()
+        state = str(data.get("state", "")).strip().lower()
+        if not entity_id:
+            return flask.jsonify({"error": "Missing entity_id"}), 400
+            
+        from .iot_agent import _load_devices, _save_devices
+        devices = _load_devices(assistant.config.data_dir)
+        matched = False
+        for d in devices:
+            if d["entity_id"] == entity_id:
+                d["state"] = state
+                matched = True
+                break
+        if matched:
+            _save_devices(assistant.config.data_dir, devices)
+            return flask.jsonify({"success": True, "entity_id": entity_id, "state": state})
+        return flask.jsonify({"error": "Device not found"}), 404
+
+    @app.route("/scripts/run", methods=["POST"])
+    def scripts_run():
+        data = flask.request.get_json(silent=True) or {}
+        filename = str(data.get("filename", "")).strip()
+        if not filename:
+            return flask.jsonify({"error": "Missing filename"}), 400
+        filename = os.path.basename(filename)
+        filepath = assistant.config.data_dir / "veronica_scripts" / filename
+        if not filepath.exists():
+            return flask.jsonify({"error": "Script not found"}), 404
+            
+        from .coder_agent import _execute_script
+        output = _execute_script(str(filepath))
+        return flask.jsonify({"success": True, "output": output})
+
+    @app.route("/camera/describe")
+    def camera_describe():
+        from .camera_agent import handle_camera_request
+        res = handle_camera_request("describe the scene in the camera view in detail", assistant.context)
+        return flask.jsonify({"success": True, "response": res.response})
+
     @app.route("/security/snapshot")
     def snapshot():
         return flask.jsonify(security_snapshot(assistant.config.data_dir))
@@ -961,6 +1273,18 @@ def run_mobile_server(
 def mobile_status(assistant_name: str = "Veronica", data_dir: Path | None = None) -> dict[str, Any]:
     """Return mobile server status metadata."""
     res = {"status": "online", "name": assistant_name, "ip": get_local_ip()}
+    res.update({
+        "cpu": 0.0,
+        "ram": 0.0,
+        "safety_level": "medium",
+        "active_jobs": 0,
+        "unread_whatsapp": 0,
+        "brain": "local",
+        "iot_devices": [],
+        "scripts": [],
+        "known_faces_count": 0,
+        "security_running": False
+    })
     if data_dir is not None:
         cpu_percent = 0.0
         ram_percent = 0.0
@@ -971,26 +1295,46 @@ def mobile_status(assistant_name: str = "Veronica", data_dir: Path | None = None
         except Exception:
             pass
             
-        # safety
         from .policy_agent import _load_policy
         policy = _load_policy(data_dir)
         
-        # active jobs
         from .runner_agent import _load_jobs
         jobs = _load_jobs(data_dir)
         active_jobs = sum(1 for j in jobs.values() if j.get("status") in ("running", "pending"))
         
-        # whatsapp
         from .whatsapp_agent import _load_messages
         msgs = _load_messages(data_dir)
         unread_whatsapp = sum(1 for m in msgs if not m.get("read", False))
+        
+        from .local_ai import _load_brain_provider
+        brain = _load_brain_provider(data_dir)
+        
+        from .iot_agent import _load_devices
+        devices = _load_devices(data_dir)
+        
+        scripts_dir = data_dir / "veronica_scripts"
+        scripts = []
+        if scripts_dir.exists():
+            scripts = sorted(f.name for f in scripts_dir.iterdir() if f.is_file() and f.suffix == ".py")
+            
+        known_faces_dir = data_dir / "known_faces"
+        known_faces_count = 0
+        if known_faces_dir.exists():
+            known_faces_count = len([f for f in known_faces_dir.iterdir() if f.is_file() and f.suffix.lower() in (".jpg", ".jpeg", ".png")])
+            
+        security_running = False
         
         res.update({
             "cpu": cpu_percent,
             "ram": ram_percent,
             "safety_level": policy.get("safety_level", "medium"),
             "active_jobs": active_jobs,
-            "unread_whatsapp": unread_whatsapp
+            "unread_whatsapp": unread_whatsapp,
+            "brain": brain,
+            "iot_devices": devices,
+            "scripts": scripts,
+            "known_faces_count": known_faces_count,
+            "security_running": security_running
         })
     return res
 

@@ -29,17 +29,20 @@ def _optional_module(module_name: str):
 # ──────────────────────────────────────────────
 def is_coder_request(message: str) -> bool:
     lowered = message.lower().strip()
-    return any(phrase in lowered for phrase in (
-        "write me a script",
-        "write a script",
-        "write a python",
-        "code a ",
-        "create a script",
-        "build a script",
-        "generate a script",
-        "write code that",
-        "write code to",
-    ))
+    return (
+        any(phrase in lowered for phrase in (
+            "write me a script",
+            "write a script",
+            "write a python",
+            "code a ",
+            "create a script",
+            "build a script",
+            "generate a script",
+            "write code that",
+            "write code to",
+        ))
+        or lowered in ("list scripts", "list veronica scripts", "coder status")
+    )
 
 
 # ──────────────────────────────────────────────
@@ -104,9 +107,12 @@ def _extract_code(raw: str) -> str:
 # ──────────────────────────────────────────────
 # Step 3 — Save
 # ──────────────────────────────────────────────
-def _save_script(description: str, code: str) -> str:
-    """Save the script to ~/veronica_scripts/ and return the filepath."""
-    scripts_dir = os.path.join(os.path.expanduser("~"), "veronica_scripts")
+def _save_script(description: str, code: str, data_dir: os.PathLike | str | None = None) -> str:
+    """Save the script to veronica_scripts/ and return the filepath."""
+    if data_dir is None:
+        scripts_dir = os.path.join(os.path.expanduser("~"), "veronica_scripts")
+    else:
+        scripts_dir = os.path.join(str(data_dir), "veronica_scripts")
     os.makedirs(scripts_dir, exist_ok=True)
 
     # Generate a sensible filename from the description
@@ -167,12 +173,24 @@ def _execute_script(filepath: str) -> str:
 # ──────────────────────────────────────────────
 def handle_coder_request(message: str, context: AssistantContext) -> SkillResult:
     """Orchestrate the full code writing pipeline."""
+    lowered = message.lower().strip()
+
+    # 1. List scripts
+    if lowered in ("list scripts", "list veronica scripts", "coder status"):
+        scripts_dir = context.data_dir / "veronica_scripts"
+        if not scripts_dir.exists():
+            return SkillResult(True, "No custom scripts generated yet.")
+        from pathlib import Path
+        files = sorted(f.name for f in Path(scripts_dir).iterdir() if f.is_file() and f.suffix == ".py")
+        if not files:
+            return SkillResult(True, "No custom scripts generated yet.")
+        lines = [f"• `{name}`" for name in files]
+        return SkillResult(True, "📂 **Saved Automation Scripts**\n" + "\n".join(lines))
 
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         return SkillResult(True, "Coder Agent requires a GEMINI_API_KEY environment variable.")
 
-    lowered = message.lower().strip()
     should_run = any(phrase in lowered for phrase in ("and run it", "run it", "and execute", "and run"))
 
     # Extract the description (strip trigger phrase)
@@ -208,8 +226,8 @@ def handle_coder_request(message: str, context: AssistantContext) -> SkillResult
     clean_code = _extract_code(raw_code)
 
     # ── Phase 3: Save ──
-    print("💾 [Phase 3/4] Saving script to ~/veronica_scripts/...")
-    filepath = _save_script(description, clean_code)
+    print(f"💾 [Phase 3/4] Saving script to {context.data_dir / 'veronica_scripts'}...")
+    filepath = _save_script(description, clean_code, data_dir=context.data_dir)
 
     # ── Phase 4: Display ──
     print("📄 [Phase 4/4] Displaying the generated code...")
