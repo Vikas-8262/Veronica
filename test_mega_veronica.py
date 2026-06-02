@@ -1,12 +1,18 @@
 """Automated Test Suite for Mega-Veronica Integrations."""
 
+import sys
 from veronica.assistant import Assistant, AssistantConfig
 import time
 
 def run_tests():
+    # Prefer UTF-8 console output for status text to avoid encoding errors
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8")
+
     print("=" * 60)
     print("INITIALIZING MEGA-VERONICA TEST SUITE")
-    print("=" * 60 + "\\n")
+    print("=" * 60 + "\n")
     
     # Initialize the core without background threads for safe testing
     assistant = Assistant(AssistantConfig(name="MegaVeronica", start_reminder_thread=False))
@@ -34,13 +40,13 @@ def run_tests():
         
         try:
             response = assistant.respond(cmd)
-            print(f"[{time.strftime('%H:%M:%S')}] VERONICA:\\n{response}\\n")
+            print(f"[{time.strftime('%H:%M:%S')}] VERONICA:\n{response}\n")
         except Exception as e:
-            print(f"[{time.strftime('%H:%M:%S')}] ERROR:\\n{e}\\n")
+            print(f"[{time.strftime('%H:%M:%S')}] ERROR:\n{e}\n")
             
         print("-" * 60)
         
-    print("\\nTest Suite Completed!")
+    print("\nTest Suite Completed!")
 
 if __name__ == "__main__":
     run_tests()
