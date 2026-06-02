@@ -40,7 +40,7 @@ def save_voice_config(config: dict):
 def is_voice_v2_request(message: str) -> bool:
     lowered = message.lower().strip()
     return (
-        lowered in ("voice status", "wake status", "wake word status")
+        lowered in ("voice status", "wake status", "wake word status", "change voice", "change your voice")
         or lowered.startswith("set voice speed ")
         or lowered.startswith("set voice gender ")
     )
@@ -52,6 +52,9 @@ def handle_voice_v2_request(message: str, context: AssistantContext) -> SkillRes
     lowered = message.lower().strip()
     config = load_voice_config()
     
+    if lowered in ("change voice", "change your voice"):
+        return SkillResult(True, "🗣️ To change my voice, use commands like `set voice gender male/female` or `set voice speed slow/normal/fast`.")
+
     if lowered == "voice status" or lowered in ("wake status", "wake word status"):
         # Check local dependencies
         pyttsx3_spec = importlib.util.find_spec("pyttsx3")
