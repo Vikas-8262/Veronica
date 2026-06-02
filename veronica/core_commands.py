@@ -109,7 +109,10 @@ def open_app(command: str) -> str:
     for label, executable in APP_MAP.items():
         if label in command:
             try:
-                subprocess.Popen([executable], shell=(platform.system() == "Windows"))
+                try:
+                    subprocess.Popen([executable], shell=(platform.system() == "Windows"))
+                except TypeError:
+                    subprocess.Popen([executable])
                 return f"{label.title()} khol diya!"
             except OSError:
                 return f"{label} nahi mila."
