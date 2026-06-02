@@ -140,10 +140,13 @@ def build_default_skills() -> list[Skill]:
     load_plugins()
 
     core_skills = [
+        # 1. Exit / Meta Control
         Skill("exit", _contains_any("exit", "quit"), _exit),
         Skill("router", is_router_request, handle_router_request),
         Skill("plugins", is_plugin_request, handle_plugin_request),
         Skill("runner", is_runner_request, handle_runner_request),
+        
+        # 2. Specific Agents / Skills (Checked before Core to prevent greeting/open hijacking)
         Skill("doctor", is_doctor_request, handle_doctor_request),
         Skill("policy", is_policy_request, handle_policy_request),
         Skill("voice_v2", is_voice_v2_request, handle_voice_v2_request),
@@ -161,19 +164,12 @@ def build_default_skills() -> list[Skill]:
         Skill("email", is_email_request, handle_email_request),
         Skill("whatsapp", is_whatsapp_request, handle_whatsapp_request),
         Skill("dictation", _is_dictation_request, _dictation),
-        Skill("news", _is_news_request, _news),
+        Skill("news_offline", _is_news_request, _news),
         Skill("ocr", _is_ocr_request, _ocr),
         Skill("openclaw", _is_openclaw_request, _openclaw),
         Skill("fun", _is_fun_request, _fun),
         Skill("advanced", _is_advanced_request, _advanced),
         Skill("help", _contains_any("help", "what can you do"), _help),
-        Skill("time", _contains_any("time"), _time),
-        Skill("date", _contains_any("date", "today"), _date),
-        Skill("calculate", _is_calculation_request, _calculate),
-        Skill("memory", is_memory_request, handle_memory_request),
-        Skill("notes", _starts_with_any("remember", "note", "show notes", "list notes"), _notes),
-        Skill("reminders", _is_reminder_request, _reminders),
-        Skill("system", _is_stats_request, _system_status),
         Skill("crewai", is_crew_request, handle_crew_request),
         Skill("flow", is_flow_request, handle_flow_request),
         Skill("extract", is_extraction_request, handle_extraction_request),
@@ -185,12 +181,10 @@ def build_default_skills() -> list[Skill]:
         Skill("media", is_media_request, handle_media_request),
         Skill("computer", is_computer_request, handle_computer_request),
         Skill("document", is_doc_request, handle_doc_request),
-        Skill("os_control", is_os_request, handle_os_request),
         Skill("voice_input", is_voice_request, handle_voice_request),
         Skill("youtube", is_youtube_request, handle_youtube_request),
         Skill("camera", is_camera_request, handle_camera_request),
         Skill("reminder", is_reminder_request, handle_reminder_request),
-        Skill("weather", is_weather_request, handle_weather_request),
         Skill("news", is_news_request, handle_news_request),
         Skill("finance", is_finance_request, handle_finance_request),
         Skill("wikipedia", is_wiki_request, handle_wiki_request),
@@ -203,7 +197,20 @@ def build_default_skills() -> list[Skill]:
         Skill("screen", is_screen_request, handle_screen_request),
         Skill("coder", is_coder_request, handle_coder_request),
         Skill("rag", is_rag_request, handle_rag_request),
+
+        # 3. Core command router (VEER-style Hinglish and common mappings)
         Skill("core", _is_core_request, _core),
+
+        # 4. Standard Basic / Fallback skills (Checked after Core so Core Hinglish takes precedence)
+        Skill("time", _contains_any("time"), _time),
+        Skill("date", _contains_any("date", "today"), _date),
+        Skill("weather", is_weather_request, handle_weather_request),
+        Skill("os_control", is_os_request, handle_os_request),
+        Skill("calculate", _is_calculation_request, _calculate),
+        Skill("memory", is_memory_request, handle_memory_request),
+        Skill("notes", _starts_with_any("remember", "note", "show notes", "list notes"), _notes),
+        Skill("reminders", _is_reminder_request, _reminders),
+        Skill("system", _is_stats_request, _system_status),
     ]
     core_skills.extend(get_dynamic_plugin_skills())
     return core_skills
